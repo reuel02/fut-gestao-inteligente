@@ -316,11 +316,11 @@ create or replace function fut.get_period_stats(
 returns table (
   user_id     uuid,
   name        text,
-  position    fut.player_position,
+  "position"  fut.player_position,
   avatar_url  text,
   keeper_slot smallint,
   membership  fut.membership_type,
-  role        fut.app_role,
+  "role"      fut.app_role,
   goals       int,
   assists     int,
   saves       int,
