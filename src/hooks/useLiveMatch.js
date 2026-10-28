@@ -135,6 +135,38 @@ export function useLiveMatch({ teams, keepers, match, events, sessionId, userId,
     }
   }, [canEdit, ensureMatch, seconds, userId, refresh])
 
+  const addSave = useCallback(async ({ keeper, minute }) => {
+    if (!canEdit) return
+    try {
+      setError('')
+      const m = await ensureMatch()
+      const keeperTeam = matchTeams?.find((t) => t.keeper?.id === keeper.id) || matchTeams?.[0]
+      await api.addEvent({
+        match_id: m.id,
+        type: 'save',
+        team_id: keeperTeam.id,
+        player_id: keeper.id,
+        assist_player_id: null,
+        minute: minute || Math.max(1, Math.ceil(seconds / 60)),
+        created_by: userId,
+      })
+      await refresh()
+    } catch (e) {
+      setError(e.message || 'Erro ao registrar defesa.')
+    }
+  }, [canEdit, ensureMatch, matchTeams, seconds, userId, refresh])
+
+  const editEvent = useCallback(async (eventId, patch) => {
+    if (!canEdit) return
+    try {
+      setError('')
+      await api.editEvent(eventId, patch)
+      await refresh()
+    } catch (e) {
+      setError(e.message || 'Erro ao editar evento.')
+    }
+  }, [canEdit, refresh])
+
   const removeEvent = useCallback(async (id) => {
     if (!canEdit) return
     try {
@@ -142,7 +174,7 @@ export function useLiveMatch({ teams, keepers, match, events, sessionId, userId,
       await api.removeEvent(id)
       await refresh()
     } catch (e) {
-      setError(e.message || 'Erro ao remover gol.')
+      setError(e.message || 'Erro ao remover evento.')
     }
   }, [canEdit, refresh])
 
@@ -160,6 +192,8 @@ export function useLiveMatch({ teams, keepers, match, events, sessionId, userId,
     reset,
     finish,
     addGoal,
+    addSave,
+    editEvent,
     removeEvent,
   }
 }

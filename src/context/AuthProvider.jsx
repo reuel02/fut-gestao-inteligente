@@ -54,7 +54,7 @@ export default function AuthProvider({ children }) {
     if (session === undefined) return 'loading'
     if (!session) return 'signedOut'
     if (!current) return 'loading'
-    if (current.isAdmin || current.player?.is_active) return 'member'
+    if (current.isAdmin || current.isManager || current.player?.is_active) return 'member'
     if (current.request?.status === 'pending') return 'pending'
     if (current.request?.status === 'rejected') return 'rejected'
     return 'none'
@@ -69,6 +69,8 @@ export default function AuthProvider({ children }) {
       player: current?.player ?? null,
       request: current?.request ?? null,
       isAdmin: current?.isAdmin ?? false,
+      isManager: current?.isManager ?? (current?.isAdmin ?? false),
+      role: current?.role ?? (current?.isAdmin ? 'admin' : 'player'),
       access,
       refreshAccount: loadAccount,
       signIn: async (email, password) => {

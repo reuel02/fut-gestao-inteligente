@@ -162,6 +162,13 @@ export default function GoalSheet({ open, team, onClose, onSave }) {
                 ))}
             </div>
           </section>
+
+          <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-800 p-3">
+            <span className="text-xs font-semibold text-zinc-400">Horário do registro</span>
+            <span className="text-sm font-mono font-black text-emerald-400 bg-zinc-950 px-2.5 py-1 rounded-lg border border-zinc-800">
+              {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
         </div>
 
         <footer className="shrink-0 border-t border-zinc-900 bg-zinc-950 p-4">

@@ -15,13 +15,16 @@ import AdminTab from './features/admin/AdminTab'
 import { Loader2 } from 'lucide-react'
 
 function MainApp() {
-  const { user, profile, isAdmin } = useAuth()
+  const { user, profile, isAdmin, isManager, role } = useAuth()
   const [activeTab, setActiveTab] = useState('sorteio')
   const [isProfileOpen, setIsProfileOpen] = useState(false)
+
+  const canManage = Boolean(isAdmin || isManager)
 
   const { status, error, data, actions, refresh } = useFutData({
     userId: user?.id,
     isAdmin,
+    isManager: canManage,
   })
 
   const live = useLiveMatch({
@@ -31,12 +34,12 @@ function MainApp() {
     events: data.events,
     sessionId: data.session?.id,
     userId: user?.id,
-    canEdit: isAdmin,
+    canEdit: data.canEditSumula,
     refresh,
   })
 
-  // Se o usuário não for admin e estiver na aba admin, redireciona para o sorteio
-  const safeTab = activeTab === 'admin' && !isAdmin ? 'sorteio' : activeTab
+  // Se o usuário não puder gerenciar e estiver na aba admin, redireciona para o sorteio
+  const safeTab = activeTab === 'admin' && !canManage ? 'sorteio' : activeTab
 
   const currentUser = useMemo(
     () => ({
@@ -44,8 +47,9 @@ function MainApp() {
       name: profile?.name || 'Jogador',
       position: profile?.position,
       avatarUrl: profile?.avatar_url,
+      role: role || 'player',
     }),
-    [user, profile],
+    [user, profile, role],
   )
 
   if (status === 'loading' && !data.session && data.roster.length === 0) {
@@ -78,13 +82,28 @@ function MainApp() {
               keepers={data.keepers}
               session={data.session}
               teams={data.teams}
-              isAdmin={isAdmin}
+              isAdmin={canManage}
+              canManage={canManage}
+              isSuperAdmin={isAdmin}
               userId={user?.id}
               currentUser={currentUser}
+              pendingAvulsos={data.pendingAvulsos}
+              referee={data.referee}
+              referees={data.referees}
+              roster={data.roster}
+              actions={actions}
               onOpenProfile={() => setIsProfileOpen(true)}
               onToggle={actions.toggleAttendance}
+              onConfirmAttendance={actions.confirmAttendance}
+              onCancelAttendance={actions.cancelAttendance}
+              onUploadReceipt={actions.uploadReceipt}
+              onApproveAvulso={actions.approveAvulsoAttendance}
               onDraw={actions.saveDraw}
               onCreateSession={actions.createSession}
+              onCancelSession={actions.cancelSession}
+              onFinishSession={actions.finishSession}
+              onSetReferee={actions.setSessionReferee}
+              onSetReferees={actions.setSessionReferees}
             />
           </section>
 
@@ -92,10 +111,15 @@ function MainApp() {
             <AoVivoTab
               allTeams={data.teams}
               live={live}
-              canEdit={isAdmin}
+              canEdit={data.canEditSumula}
               currentUser={currentUser}
-              isAdmin={isAdmin}
+              isAdmin={canManage}
+              isReferee={data.isReferee}
+              referee={data.referee}
+              referees={data.referees}
               onOpenProfile={() => setIsProfileOpen(true)}
+              onEditEvent={actions.editEvent}
+              onDeleteEvent={actions.deleteEvent}
             />
           </section>
 
@@ -104,17 +128,23 @@ function MainApp() {
               roster={data.roster}
               stats={data.stats}
               events={data.events}
+              canManage={canManage}
               onOpenProfile={() => setIsProfileOpen(true)}
+              onEditEvent={actions.editEvent}
+              onDeleteEvent={actions.deleteEvent}
             />
           </section>
 
-          {isAdmin && (
+          {canManage && (
             <section hidden={safeTab !== 'admin'} className="h-full" aria-label="Admin">
               <AdminTab
                 roster={data.roster}
                 requests={data.requests}
                 session={data.session}
+                teams={data.teams}
+                linePlayers={data.linePlayers}
                 actions={actions}
+                isSuperAdmin={isAdmin}
                 onOpenProfile={() => setIsProfileOpen(true)}
               />
             </section>
@@ -125,8 +155,8 @@ function MainApp() {
           active={safeTab}
           onChange={setActiveTab}
           live={live.running}
-          isAdmin={isAdmin}
-          pendingCount={data.requests.length}
+          isAdmin={canManage}
+          pendingCount={data.requests.length + (data.pendingAvulsos?.length || 0)}
         />
 
         <ProfileModal open={isProfileOpen} onClose={() => setIsProfileOpen(false)} />

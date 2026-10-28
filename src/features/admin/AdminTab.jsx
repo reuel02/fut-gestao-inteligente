@@ -3,7 +3,9 @@ import {
   Check,
   Hand,
   Loader2,
+  Shield,
   ShieldAlert,
+  ShieldCheck,
   UserCheck,
   UserX,
   Users,
@@ -15,12 +17,16 @@ import ScreenHeader from '../../components/ScreenHeader'
 import Avatar from '../../components/Avatar'
 import PositionBadge from '../../components/PositionBadge'
 import MembershipBadge from '../../components/MembershipBadge'
+import FinishSessionModal from '../sorteio/FinishSessionModal'
 
 export default function AdminTab({
   roster = [],
   requests = [],
   session,
+  teams = [],
+  linePlayers = [],
   actions,
+  isSuperAdmin = false,
   onOpenProfile,
 }) {
   const [activeSection, setActiveSection] = useState('requests') // 'requests' | 'players' | 'session'
@@ -30,6 +36,7 @@ export default function AdminTab({
   const [processingId, setProcessingId] = useState(null)
   const [feedback, setFeedback] = useState('')
   const [feedbackType, setFeedbackType] = useState('success') // 'success' | 'error'
+  const [finishModalOpen, setFinishModalOpen] = useState(false)
 
   const showFeedback = (msg, type = 'success') => {
     setFeedback(msg)
@@ -84,13 +91,16 @@ export default function AdminTab({
     }
   }
 
-  const handleFinishSession = async () => {
-    if (!confirm('Deseja realmente encerrar a pelada atual?')) return
+  const handleRoleChange = async (userId, nextRole) => {
     try {
-      await actions.finishSession()
-      showFeedback('Pelada encerrada com sucesso!')
+      await actions.setPlayerRole(userId, nextRole)
+      showFeedback(
+        nextRole === 'gestor'
+          ? 'Jogador promovido a Gestor do Futebol!'
+          : 'Cargo de gestor revogado.',
+      )
     } catch (err) {
-      showFeedback(err.message || 'Erro ao encerrar pelada.', 'error')
+      showFeedback(err.message || 'Erro ao atualizar cargo.', 'error')
     }
   }
 
@@ -429,6 +439,15 @@ export default function AdminTab({
                             </span>
                             <PositionBadge position={player.position} />
                             <MembershipBadge type={player.membership || 'mensalista'} size="xs" />
+                            {player.role === 'admin' ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-red-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-red-400 ring-1 ring-red-500/30">
+                                <Shield className="size-2.5" /> Admin
+                              </span>
+                            ) : player.role === 'gestor' ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-emerald-400 ring-1 ring-emerald-500/30">
+                                <ShieldCheck className="size-2.5" /> Gestor
+                              </span>
+                            ) : null}
                             {isKeeper && (
                               <span className="rounded bg-amber-400/15 px-1 text-[9px] font-bold text-amber-300 ring-1 ring-amber-400/30">
                                 GOL {player.keeperSlot}
@@ -538,6 +557,35 @@ export default function AdminTab({
                           )}
                         </div>
                       </div>
+
+                      {/* Controle de Cargo no Futebol (Apenas Admin/ferreirareuel3@gmail.com pode promover) */}
+                      {isSuperAdmin && player.role !== 'admin' && (
+                        <div className="mt-2 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-medium text-zinc-400 flex items-center gap-1">
+                            <ShieldCheck className="size-3 text-emerald-400" />
+                            Cargo no Futebol:
+                          </span>
+                          <div>
+                            {player.role === 'gestor' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRoleChange(player.id, 'player')}
+                                className="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 active:scale-95 transition-all"
+                              >
+                                Revogar Gestor
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRoleChange(player.id, 'gestor')}
+                                className="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 active:scale-95 transition-all"
+                              >
+                                Promover a Gestor
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </li>
                   )
                 })}
@@ -572,10 +620,11 @@ export default function AdminTab({
 
                 <button
                   type="button"
-                  onClick={handleFinishSession}
-                  className="w-full flex h-11 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 text-xs font-bold text-red-300 hover:bg-red-500/20 active:scale-95 transition-all"
+                  onClick={() => setFinishModalOpen(true)}
+                  className="w-full flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 active:scale-95 transition-all"
                 >
-                  Encerrar esta Pelada
+                  <Check className="size-4" />
+                  Finalizar Pelada...
                 </button>
               </div>
             ) : (
@@ -589,6 +638,19 @@ export default function AdminTab({
           </div>
         )}
       </div>
+
+      {/* Modal de Finalização com bloqueio de pagamento dos avulsos */}
+      <FinishSessionModal
+        open={finishModalOpen}
+        teams={teams}
+        keepers={roster.filter((p) => p.keeperSlot)}
+        linePlayers={linePlayers}
+        onClose={() => setFinishModalOpen(false)}
+        onFinish={async (confirmedAvulsoIds) => {
+          await actions.finishSession(confirmedAvulsoIds)
+          showFeedback('Pelada finalizada com sucesso! Presenças computadas.')
+        }}
+      />
     </div>
   )
 }

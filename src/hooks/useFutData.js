@@ -6,6 +6,7 @@ import { TEAM_THEMES } from '../utils/balanceTeams'
 const EMPTY = {
   roster: [],
   session: null,
+  sessionReferees: [],
   attendance: [],
   teams: [],
   match: null,
@@ -23,19 +24,29 @@ const unknownPlayer = (id) => ({
   membership: 'mensalista',
 })
 
+const formatEventTime = (iso) => {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Carrega e mantém sincronizados (Realtime) todos os dados do futebol.
  * Devolve os dados já no formato usado pela interface + ações de escrita.
  */
-export function useFutData({ userId, isAdmin }) {
+export function useFutData({ userId, isAdmin, isManager }) {
   const [raw, setRaw] = useState(EMPTY)
   const [status, setStatus] = useState('loading') // loading | ready | error
   const [error, setError] = useState('')
-  const adminRef = useRef(isAdmin)
+  const privilegedRef = useRef(Boolean(isAdmin || isManager))
 
   useEffect(() => {
-    adminRef.current = isAdmin
-  }, [isAdmin])
+    privilegedRef.current = Boolean(isAdmin || isManager)
+  }, [isAdmin, isManager])
 
   const refresh = useCallback(async () => {
     try {
@@ -43,23 +54,25 @@ export function useFutData({ userId, isAdmin }) {
         api.fetchRoster(),
         api.fetchOpenSession(),
         api.fetchStats(),
-        adminRef.current ? api.fetchPendingRequests() : Promise.resolve([]),
+        privilegedRef.current ? api.fetchPendingRequests() : Promise.resolve([]),
       ])
 
       let attendance = []
       let teams = []
       let match = null
       let events = []
+      let sessionReferees = []
       if (session) {
-        ;[attendance, teams, match] = await Promise.all([
+        ;[attendance, teams, match, sessionReferees] = await Promise.all([
           api.fetchAttendance(session.id),
           api.fetchTeams(session.id),
           api.fetchLiveMatch(session.id),
+          api.fetchSessionReferees(session.id),
         ])
         if (match) events = await api.fetchEvents(match.id)
       }
 
-      setRaw({ roster, session, attendance, teams, match, events, stats, requests })
+      setRaw({ roster, session, sessionReferees, attendance, teams, match, events, stats, requests })
       setStatus('ready')
       setError('')
     } catch (e) {
@@ -98,10 +111,33 @@ export function useFutData({ userId, isAdmin }) {
     const keepers = activeRoster
       .filter((p) => p.keeperSlot)
       .sort((a, b) => a.keeperSlot - b.keeperSlot)
-    const confirmedIds = new Set(raw.attendance.filter((a) => a.confirmed).map((a) => a.user_id))
+
+    const attendanceMap = new Map(raw.attendance.map((a) => [a.user_id, a]))
+
     const linePlayers = activeRoster
       .filter((p) => !p.keeperSlot)
-      .map((p) => ({ ...p, confirmed: confirmedIds.has(p.id) }))
+      .map((p) => {
+        const att = attendanceMap.get(p.id)
+        const isMensal = (p.membership || 'mensalista') === 'mensalista'
+        const requested = Boolean(att?.confirmed)
+        // Mensalista: auto-aprovado quando confirma. Avulso: requer aprovação manual do gestor.
+        const confirmed = isMensal ? requested : Boolean(att?.confirmed && att?.is_approved)
+        const pendingApproval = !isMensal && requested && !att?.is_approved
+        const paymentConfirmed = Boolean(att?.payment_confirmed)
+
+        return {
+          ...p,
+          confirmed,
+          requested,
+          pendingApproval,
+          paymentConfirmed,
+          paymentMethod: att?.payment_method || (isMensal ? 'monthly' : 'pix'),
+          receiptUrl: att?.receipt_url || null,
+          isApproved: att?.is_approved ?? false,
+        }
+      })
+
+    const pendingAvulsos = linePlayers.filter((p) => p.pendingApproval)
 
     const teams = raw.teams.map((t) => {
       const themeIndex = Math.max(0, TEAM_THEMES.findIndex((th) => th.letter === t.letter))
@@ -125,13 +161,25 @@ export function useFutData({ userId, isAdmin }) {
       type: e.type,
       teamId: e.team_id,
       minute: e.minute,
+      createdAt: e.created_at,
+      recordedTime: formatEventTime(e.created_at),
       scorer: byId.get(e.player_id) ?? unknownPlayer(e.player_id),
       assist: e.assist_player_id ? (byId.get(e.assist_player_id) ?? unknownPlayer(e.assist_player_id)) : null,
     }))
 
+    const referees = raw.sessionReferees && raw.sessionReferees.length > 0
+      ? raw.sessionReferees
+      : raw.session?.referee_id
+        ? [byId.get(raw.session.referee_id)].filter(Boolean)
+        : []
+    const referee = referees[0] ?? null
+    const isReferee = referees.some((r) => r.id === userId)
+    const canEditSumula = Boolean(isAdmin || isManager || isReferee)
+
     return {
       roster: raw.roster,
       linePlayers,
+      pendingAvulsos,
       keepers,
       session: raw.session,
       teams,
@@ -139,8 +187,12 @@ export function useFutData({ userId, isAdmin }) {
       events,
       stats: raw.stats,
       requests: raw.requests,
+      referees,
+      referee,
+      isReferee,
+      canEditSumula,
     }
-  }, [raw])
+  }, [raw, userId, isAdmin, isManager])
 
   // ---- Ações ----------------------------------------------------------------
   const actions = useMemo(() => {
@@ -153,14 +205,27 @@ export function useFutData({ userId, isAdmin }) {
       toggleAttendance: run((playerId, confirmed) =>
         api.setAttendance(raw.session.id, playerId, confirmed),
       ),
+      confirmAttendance: run((options) => api.confirmAttendance(raw.session.id, options)),
+      cancelAttendance: run(() => api.cancelAttendance(raw.session.id)),
+      approveAvulsoAttendance: run((playerId, approved, paymentConfirmed) =>
+        api.approveAvulsoAttendance(raw.session.id, playerId, approved, paymentConfirmed),
+      ),
       createSession: run((values) => api.createSession(userId, values)),
-      finishSession: run(() => api.finishSession(raw.session.id)),
+      setSessionReferee: run((refereeId) => api.setSessionReferee(raw.session.id, refereeId)),
+      setSessionReferees: run((refereeIds) => api.setSessionReferees(raw.session.id, refereeIds)),
+      cancelSession: run(() => api.cancelSession(raw.session.id)),
+      finishSession: run((confirmedAvulsoIds) => api.finishSession(raw.session.id, confirmedAvulsoIds)),
       saveDraw: run((teams) => api.saveDraw(raw.session.id, teams)),
       reviewRequest: run(api.reviewRequest),
       updateRating: run(api.updateRating),
       setMembership: run(api.setMembership),
+      setPlayerRole: run(api.setPlayerRole),
       setKeeper: run(api.setKeeper),
       setPlayerActive: run(api.setPlayerActive),
+      editEvent: run(api.editEvent),
+      deleteEvent: run(api.removeEvent),
+      uploadReceipt: api.uploadReceipt,
+      fetchRecentActions: api.fetchPlayerRecentActions,
     }
   }, [raw.session, userId, refresh])
 

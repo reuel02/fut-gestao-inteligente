@@ -66,39 +66,41 @@ export default function Scoreboard({
         </div>
 
         {canEdit ? (
-          <div className="mt-5 flex gap-2">
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
             <button
               id="btn-toggle-clock"
               type="button"
               onClick={onToggleClock}
-              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all active:scale-95 ${
+              className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition-all active:scale-95 ${
                 running
-                  ? 'bg-zinc-800 text-white hover:bg-zinc-700'
-                  : 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400'
+                  ? 'bg-zinc-800 text-white hover:bg-zinc-700 ring-1 ring-zinc-700'
+                  : 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400 shadow-md shadow-emerald-500/20'
               }`}
             >
               {running ? <Pause className="size-4" /> : <Play className="size-4" />}
-              {running ? 'Pausar' : seconds > 0 ? 'Retomar' : 'Iniciar'}
+              {running ? 'Pausar' : seconds > 0 ? 'Retomar Cronômetro' : 'Iniciar Cronômetro'}
             </button>
+
             <button
               id="btn-finish-match"
               type="button"
               onClick={onFinish}
-              aria-label="Encerrar partida"
-              title="Encerrar partida (mantém gols no histórico)"
-              className="flex size-10 items-center justify-center rounded-xl bg-zinc-800 text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white active:scale-95"
+              className="flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-black bg-amber-400 text-zinc-950 shadow-md shadow-amber-400/20 transition-all hover:bg-amber-300 active:scale-95"
+              title="Encerrar esta partida e salvar placar na súmula"
             >
-              <Flag className="size-4" />
+              <Flag className="size-3.5" />
+              Encerrar Partida
             </button>
+
             <button
               id="btn-reset-match"
               type="button"
               onClick={onReset}
-              aria-label="Zerar partida"
-              title="Zerar partida (apaga os gols)"
-              className="flex size-10 items-center justify-center rounded-xl bg-zinc-800 text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white active:scale-95"
+              aria-label="Reiniciar cronômetro"
+              title="Reiniciar cronômetro"
+              className="flex size-9 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
             >
-              <RotateCcw className="size-4" />
+              <RotateCcw className="size-3.5" />
             </button>
           </div>
         ) : (
